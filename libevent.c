@@ -953,6 +953,108 @@ static PHP_FUNCTION(event_buffer_new)
 }
 /* }}} */
 
+
+/* {{{ proto resource event_buffer_socket_new(event_base base, resource stream, mixed readcb, mixed writecb, mixed errorcb[, mixed arg]) 
+ */
+static PHP_FUNCTION(event_buffer_socket_new)
+{
+	php_event_base_t *base;
+	php_bufferevent_t *bevent;
+	php_stream *stream;
+	zval *zbase, *zstream, *zreadcb, *zwritecb, *zerrorcb, *zarg = NULL;
+	php_socket_t fd;
+	char *func_name;
+#ifdef LIBEVENT_SOCKETS_SUPPORT
+	php_socket *php_sock;
+#endif
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rrzzz|z", &zbase, &zstream, &zreadcb, &zwritecb, &zerrorcb, &zarg) != SUCCESS) {
+		return;
+	}
+
+	if (ZEND_FETCH_RESOURCE_NO_RETURN(stream, php_stream *, &zstream, -1, NULL, php_file_le_stream())) {
+		if (php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void*)&fd, 1) != SUCCESS || fd < 0) {
+			RETURN_FALSE;
+		}
+	} else {
+#ifdef LIBEVENT_SOCKETS_SUPPORT
+		if (ZEND_FETCH_RESOURCE_NO_RETURN(php_sock, php_socket *, &zstream, -1, NULL, php_sockets_le_socket())) {
+			fd = php_sock->bsd_socket;
+		} else {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "stream argument must be either valid PHP stream or valid PHP socket resource");
+			RETURN_FALSE;
+		}
+#else
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "stream argument must be valid PHP stream resource");
+		RETURN_FALSE;
+#endif
+	}
+
+	if (Z_TYPE_P(zreadcb) != IS_NULL) {
+		if (!zend_is_callable(zreadcb, 0, &func_name TSRMLS_CC)) {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "'%s' is not a valid read callback", func_name);
+			efree(func_name);
+			RETURN_FALSE;
+		}
+		efree(func_name);
+	} else {
+		zreadcb = NULL;
+	}
+
+	if (Z_TYPE_P(zwritecb) != IS_NULL) {
+		if (!zend_is_callable(zwritecb, 0, &func_name TSRMLS_CC)) {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "'%s' is not a valid write callback", func_name);
+			efree(func_name);
+			RETURN_FALSE;
+		}
+		efree(func_name);
+	} else {
+		zwritecb = NULL;
+	}
+
+	if (!zend_is_callable(zerrorcb, 0, &func_name TSRMLS_CC)) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "'%s' is not a valid error callback", func_name);
+		efree(func_name);
+		RETURN_FALSE;
+	}
+	efree(func_name);
+
+	ZVAL_TO_BASE(zbase, base);
+
+	bevent = emalloc(sizeof(php_bufferevent_t));
+	bevent->bevent = bufferevent_socket_new(base->base, fd, BEV_OPT_CLOSE_ON_FREE);
+	bevent->base = base;
+
+	bufferevent_setcb(bevent->bevent, _php_bufferevent_readcb, _php_bufferevent_writecb, _php_bufferevent_errorcb, bevent);
+
+	if (zreadcb) {
+		zval_add_ref(&zreadcb);
+	}
+	bevent->readcb = zreadcb;
+	
+	if (zwritecb) {
+		zval_add_ref(&zwritecb);
+	}
+	bevent->writecb = zwritecb;
+		
+	zval_add_ref(&zerrorcb);
+	bevent->errorcb = zerrorcb;
+
+	if (zarg) {
+		zval_add_ref(&zarg);
+		bevent->arg = zarg;
+	} else {
+		ALLOC_INIT_ZVAL(bevent->arg);
+	}
+
+	TSRMLS_SET_CTX(bevent->thread_ctx);
+
+	bevent->rsrc_id = zend_list_insert(bevent, le_bufferevent);
+	RETURN_RESOURCE(bevent->rsrc_id);
+}
+/* }}} */
+
+
 /* {{{ proto void event_buffer_free(resource bevent) 
  */
 static PHP_FUNCTION(event_buffer_free)
@@ -1464,6 +1566,16 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_event_buffer_new, 0, 0, 4)
 ZEND_END_ARG_INFO()
 
 EVENT_ARGINFO
+ZEND_BEGIN_ARG_INFO_EX(arginfo_event_buffer_socket_new, 0, 0, 5)
+	ZEND_ARG_INFO(0, base)
+	ZEND_ARG_INFO(0, stream)
+	ZEND_ARG_INFO(0, readcb)
+	ZEND_ARG_INFO(0, writecb)
+	ZEND_ARG_INFO(0, errorcb)
+	ZEND_ARG_INFO(0, arg)
+ZEND_END_ARG_INFO()
+
+EVENT_ARGINFO
 ZEND_BEGIN_ARG_INFO_EX(arginfo_event_buffer_free, 0, 0, 1)
 	ZEND_ARG_INFO(0, bevent)
 ZEND_END_ARG_INFO()
@@ -1562,6 +1674,7 @@ zend_function_entry libevent_functions[] = {
 	PHP_FE(event_set, 					arginfo_event_set)
 	PHP_FE(event_del, 					arginfo_event_del)
 	PHP_FE(event_buffer_new, 			arginfo_event_buffer_new)
+	PHP_FE(event_buffer_socket_new,	arginfo_event_buffer_socket_new)
 	PHP_FE(event_buffer_free, 			arginfo_event_buffer_free)
 	PHP_FE(event_buffer_base_set, 		arginfo_event_buffer_base_set)
 	PHP_FE(event_buffer_priority_set, 	arginfo_event_buffer_priority_set)
@@ -1598,6 +1711,7 @@ zend_function_entry libevent_functions[] = {
 	PHP_FE(event_set, 					NULL)
 	PHP_FE(event_del, 					NULL)
 	PHP_FE(event_buffer_new, 			NULL)
+	PHP_FE(event_buffer_socket_new,	NULL)
 	PHP_FE(event_buffer_free, 			NULL)
 	PHP_FE(event_buffer_base_set, 		NULL)
 	PHP_FE(event_buffer_priority_set, 	NULL)
