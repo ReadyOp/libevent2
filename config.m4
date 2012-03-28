@@ -1,11 +1,11 @@
-dnl $Id: config.m4 287913 2009-08-31 08:45:42Z tony2001 $
+dnl $Id: config.m4 287913 2012-03-28 13:10:35Z JohnOhl $
 
 PHP_ARG_WITH(libevent, for libevent support,
 [  --with-libevent             Include libevent support])
 
 if test "$PHP_LIBEVENT" != "no"; then
   SEARCH_PATH="/usr /usr/local"
-  SEARCH_FOR="/include/event.h"
+  SEARCH_FOR="/include/event2/event.h"
 
   if test "$PHP_LIBEVENT" = "yes"; then
     AC_MSG_CHECKING([for libevent headers in default path])
@@ -41,7 +41,7 @@ if test "$PHP_LIBEVENT" != "no"; then
   [
     PHP_ADD_LIBRARY_WITH_PATH($LIBNAME, $LIBEVENT_DIR/$PHP_LIBDIR, LIBEVENT_SHARED_LIBADD)
   ],[
-    AC_MSG_ERROR([wrong libevent version {1.4.+ is required} or lib not found])
+    AC_MSG_ERROR([wrong libevent version {2.0.+ is required} or lib not found])
   ],[
     -L$LIBEVENT_DIR/$PHP_LIBDIR 
   ])
