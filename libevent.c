@@ -14,10 +14,10 @@
   +----------------------------------------------------------------------+
   | Author: Antony Dovgal <tony@daylessday.org>                          |
   |         Arnaud Le Blanc <lbarnaud@php.net>                           |
+  |                                                                      |
+  | Contiued By: John Ohl <john@collabriasoftware.com>                   |
   +----------------------------------------------------------------------+
 */
-
-/* $Id: libevent.c 300303 2010-06-09 10:43:38Z tony2001 $ */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -149,6 +149,7 @@ static void _php_event_dtor(zend_rsrc_list_entry *rsrc TSRMLS_DC) /* {{{ */
 	if (event->in_free) {
 		return;
 	}
+
 
 	event->in_free = 1;
 
@@ -519,24 +520,86 @@ static PHP_FUNCTION(event_base_priority_init)
 }
 /* }}} */
 
-
-/* {{{ proto resource event_new() 
+/* {{{ proto resource event_new(resource base, resource fd, int events, mixed callback[, mixed arg]) 
  */
 static PHP_FUNCTION(event_new)
 {
+	zval *zbase, **fd, *zcallback, *zarg = NULL;
+	php_event_base_t *base;
 	php_event_t *event;
+	long events;
+	php_event_callback_t *callback;
+	char *func_name;
+	php_stream *stream;
+	php_socket_t file_desc;
+#ifdef LIBEVENT_SOCKETS_SUPPORT
+	php_socket *php_sock;
+#endif
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") != SUCCESS) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rZlz|z", &zbase, &fd, &events, &zcallback, &zarg) != SUCCESS) {
 		return;
 	}
 
+	ZVAL_TO_BASE(zbase, base);
 	event = emalloc(sizeof(php_event_t));
-	event->event = ecalloc(1, sizeof(struct event));
+	event->base = base;
 
-	event->stream_id = -1;
-	event->callback = NULL;
-	event->base = NULL;
+	if (events & EV_SIGNAL) {
+		/* signal support */
+		convert_to_long_ex(fd);
+		file_desc = Z_LVAL_PP(fd);
+		if (file_desc < 0 || file_desc >= NSIG) {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "invalid signal passed");
+			RETURN_FALSE;
+		}
+	} else {
+		if (ZEND_FETCH_RESOURCE_NO_RETURN(stream, php_stream *, fd, -1, NULL, php_file_le_stream())) {
+			if (php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void*)&file_desc, 1) != SUCCESS || file_desc < 0) {
+				RETURN_FALSE;
+			}
+		} else {
+#ifdef LIBEVENT_SOCKETS_SUPPORT
+			if (ZEND_FETCH_RESOURCE_NO_RETURN(php_sock, php_socket *, fd, -1, NULL, php_sockets_le_socket())) {
+				file_desc = php_sock->bsd_socket;
+			} else {
+				php_error_docref(NULL TSRMLS_CC, E_WARNING, "fd argument must be either valid PHP stream or valid PHP socket resource");
+				RETURN_FALSE;
+			}
+#else
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "fd argument must be valid PHP stream resource");
+			RETURN_FALSE;
+#endif
+		}
+	}
+
+	if (!zend_is_callable(zcallback, 0, &func_name TSRMLS_CC)) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "'%s' is not a valid callback", func_name);
+		efree(func_name);
+		RETURN_FALSE;
+	}
+	efree(func_name);
+
+	zval_add_ref(&zcallback);
+	if (zarg) {
+		zval_add_ref(&zarg);
+	} else {
+		ALLOC_INIT_ZVAL(zarg);
+	}
+
+	callback = emalloc(sizeof(php_event_callback_t));
+	callback->func = zcallback;
+	callback->arg = zarg;
+
+	event->callback = callback;
+	if (events & EV_SIGNAL) {
+		event->stream_id = -1;
+	} else {
+		zend_list_addref(Z_LVAL_PP(fd));
+		event->stream_id = Z_LVAL_PP(fd);
+	}
+
 	event->in_free = 0;
+	event->event = event_new(base->base, (int)file_desc, (short)events, _php_event_callback, event);
 	TSRMLS_SET_CTX(event->thread_ctx);
 
 	event->rsrc_id = zend_list_insert(event, le_event);
@@ -1102,8 +1165,16 @@ static PHP_FUNCTION(event_buffer_timeout_set)
 		return;
 	}
 
+	struct timeval rtime;
+	rtime.tv_usec = read_timeout % 1000000;
+	rtime.tv_sec = read_timeout / 1000000;
+
+	struct timeval wtime;
+	wtime.tv_usec = write_timeout % 1000000;
+	wtime.tv_sec = write_timeout / 1000000;
+
 	ZVAL_TO_BEVENT(zbevent, bevent);
-	bufferevent_settimeout(bevent->bevent, read_timeout, write_timeout);
+	bufferevent_set_timeouts(bevent->bevent, &rtime, &wtime);
 }
 /* }}} */
 
@@ -1343,7 +1414,16 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_event_base_priority_init, 0, 0, 2)
 ZEND_END_ARG_INFO()
 
 EVENT_ARGINFO
-ZEND_BEGIN_ARG_INFO(arginfo_event_new, 0)
+ZEND_BEGIN_ARG_INFO(arginfo_event_base_new, 0)
+ZEND_END_ARG_INFO()
+
+EVENT_ARGINFO
+ZEND_BEGIN_ARG_INFO_EX(arginfo_event_new, 0, 0, 4)
+	ZEND_ARG_INFO(0, base)
+	ZEND_ARG_INFO(0, fd)
+	ZEND_ARG_INFO(0, events)
+	ZEND_ARG_INFO(0, callback)
+	ZEND_ARG_INFO(0, arg)
 ZEND_END_ARG_INFO()
 
 EVENT_ARGINFO
@@ -1461,7 +1541,7 @@ ZEND_END_ARG_INFO()
 const 
 #endif
 zend_function_entry libevent_functions[] = {
-	PHP_FE(event_base_new, 				arginfo_event_new)
+	PHP_FE(event_base_new, 				arginfo_event_base_new)
 	PHP_FE(event_base_free, 			arginfo_event_base_loopbreak)
 	PHP_FE(event_base_loop, 			arginfo_event_base_loop)
 	PHP_FE(event_base_loopbreak, 		arginfo_event_base_loopbreak)
