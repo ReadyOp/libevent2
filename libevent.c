@@ -542,7 +542,7 @@ static PHP_FUNCTION(event_new)
 #ifdef LIBEVENT_SOCKETS_SUPPORT
 	php_socket *php_sock;
 #endif
-
+	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rZlz|z", &zbase, &fd, &events, &zcallback, &zarg) != SUCCESS) {
 		return;
 	}
@@ -682,6 +682,7 @@ static PHP_FUNCTION(event_set)
 #ifdef LIBEVENT_SOCKETS_SUPPORT
 	php_socket *php_sock;
 #endif
+	int ret;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rZlz|z", &zevent, &fd, &events, &zcallback, &zarg) != SUCCESS) {
 		return;
@@ -749,6 +750,14 @@ static PHP_FUNCTION(event_set)
 	if (old_callback) {
 		_php_event_callback_free(old_callback);
 	}
+
+	if (event->base) {
+		ret = event_base_set(event->base->base, event->event);
+		if (ret != 0) {
+			RETURN_FALSE;
+		}
+	}
+
 	RETURN_TRUE;
 }
 /* }}} */
