@@ -169,7 +169,7 @@ static void _php_event_dtor(zend_rsrc_list_entry *rsrc TSRMLS_DC) /* {{{ */
 	efree(event);
 
 	if (base_id >= 0) {
-		/*zend_list_delete(base_id);*/
+		zend_list_delete(base_id);
 	}
 }
 /* }}} */
@@ -200,7 +200,7 @@ static void _php_bufferevent_dtor(zend_rsrc_list_entry *rsrc TSRMLS_DC) /* {{{ *
 	efree(bevent);
 
 	if (base_id >= 0) {
-	/*	zend_list_delete(base_id);*/
+		zend_list_delete(base_id);
 	}
 }
 /* }}} */
@@ -1024,6 +1024,10 @@ static PHP_FUNCTION(event_buffer_socket_new)
 	bevent = emalloc(sizeof(php_bufferevent_t));
 	bevent->bevent = bufferevent_socket_new(base->base, fd, BEV_OPT_CLOSE_ON_FREE);
 	bevent->base = base;
+
+	// Add the reference to the base
+	zend_list_addref(base->rsrc_id);
+	++base->events;
 
 	bufferevent_setcb(bevent->bevent, _php_bufferevent_readcb, _php_bufferevent_writecb, _php_bufferevent_errorcb, bevent);
 
