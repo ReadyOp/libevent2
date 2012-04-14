@@ -1,1 +1,3 @@
-This is a continuation of the http://pecl.php.net/package/libevent project.
+This is a fork of the http://pecl.php.net/package/libevent package focused on libevent2.
+
+This package breaks backwards compatibility with versions < libevent 2.
