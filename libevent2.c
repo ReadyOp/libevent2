@@ -1573,7 +1573,7 @@ static PHP_FUNCTION(event_buffer_free) {
 	zend_list_delete(bevent->rsrc_id);
 }
 
-// void event_buffer_get_input_length ( resource $bevent )
+// int event_buffer_get_input_length ( resource $bevent )
 static PHP_FUNCTION(event_buffer_get_input_length) {
 	zval *zbevent;
 	php_bufferevent_t *bevent;
@@ -1592,7 +1592,7 @@ static PHP_FUNCTION(event_buffer_get_input_length) {
 	RETURN_LONG(length);
 }
 
-// void event_buffer_get_output_length ( resource $bevent )
+// int event_buffer_get_output_length ( resource $bevent )
 static PHP_FUNCTION(event_buffer_get_output_length) {
 	zval *zbevent;
 	php_bufferevent_t *bevent;

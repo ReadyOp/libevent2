@@ -1,3 +1,55 @@
 This is a fork of the http://pecl.php.net/package/libevent package focused on libevent2.
 
 This package breaks backwards compatibility with versions < libevent 2.
+
+Requirements:
+libevent 2.0.x
+openssl 0.9.8x
+
+New functions include:
+
+// Create and bind a new connection listener (for accepting incoming server connections)
+resource event_connlistener_new_bind ( resource $base, mixed $callback, mixed $arg, int $flags, int $backlog, string $addr, int port )
+
+// Create a new SSL server context, first parameter is the certificate chain / pem file path, the second is the private key file path
+resource event_context_create ( string $pem, string $pkey )
+
+// Link a created SSL context to a particular event listener
+void event_context_set ( resource $listener, resource $server_ctx )
+
+// Return the number of bytes available for immediate reading in a bufferevent
+int event_buffer_get_input_length ( resource $bevent )
+
+// Return the number of bytes waiting to be written in a bufferevent
+int event_buffer_get_output_length ( resource $bevent )
+
+// Accept an incoming ssl socket connection
+resource event_buffer_openssl_socket_new ( event_base $base, resource $stream, resource $server_context, int $state, mixed $readcb, mixed $writecb, mixed $errorcb [, mixed $arg] )
+
+//
+// Example SSL connection listener
+//
+
+$base = event_base_new();
+$ssl = event_context_create('/path/to/certificate/chain/pem', '/path/to/private/key');
+$listener = event_connlistener_new_bind($base, 'cb_accept', NULL, LEV_OPT_REUSEABLE, -1, '0.0.0.0', 443);
+event_context_set($listener, $ssl);
+
+event_base_dispatch($base);
+
+function cb_accept($Listener, $Stream, $argumnets) {
+	global $base;
+	global $ssl;
+
+	// Accept the new connection
+	$bev = event_buffer_openssl_socket_new($base, $Stream, $ssl, BUFFEREVENT_SSL_ACCEPTING, cb_read, cb_write, cb_error);
+}
+
+function cb_read($bev, $event) {
+}
+
+function cb_write($bev, $event) {
+}
+
+function cb_error($bev, $event) {
+}
