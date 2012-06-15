@@ -26,6 +26,9 @@ int event_buffer_get_output_length ( resource $bevent )
 // Accept an incoming ssl socket connection
 resource event_buffer_openssl_socket_new ( event_base $base, resource $stream, resource $server_context, int $state, mixed $readcb, mixed $writecb, mixed $errorcb [, mixed $arg] )
 
+// Same as event_base_loop, with no flags set. It keeps running until there are no more registered events or until event_base_loopbreak() or event_base_loopexit() is called.
+int event_base_dispatch ( resource $base )
+
 //
 // Example SSL connection listener
 //
